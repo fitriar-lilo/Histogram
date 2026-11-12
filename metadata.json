@@ -1,0 +1,6 @@
+{
+  "name": "Cambridge 0580 Math: Histogram & Cumulative Frequency Lab",
+  "description": "Interactive step-by-step learning platform for Cambridge IGCSE 0580 Chapter 20: Histograms and Cumulative Frequency Curves, with grouped data conversion, interactive builder, and PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
