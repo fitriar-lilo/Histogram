@@ -12,6 +12,7 @@ export const EXAM_HEIGHTS_DATA: number[] = [
 export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   {
     id: 'row-1',
+    intervalInput: '',
     intervalText: '144 ≤ h < 150',
     lowerBoundInput: '',
     upperBoundInput: '',
@@ -26,6 +27,7 @@ export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   },
   {
     id: 'row-2',
+    intervalInput: '',
     intervalText: '150 ≤ h < 156',
     lowerBoundInput: '',
     upperBoundInput: '',
@@ -40,6 +42,7 @@ export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   },
   {
     id: 'row-3',
+    intervalInput: '',
     intervalText: '156 ≤ h < 162',
     lowerBoundInput: '',
     upperBoundInput: '',
@@ -54,6 +57,7 @@ export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   },
   {
     id: 'row-4',
+    intervalInput: '',
     intervalText: '162 ≤ h < 168',
     lowerBoundInput: '',
     upperBoundInput: '',
@@ -68,6 +72,7 @@ export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   },
   {
     id: 'row-5',
+    intervalInput: '',
     intervalText: '168 ≤ h < 174',
     lowerBoundInput: '',
     upperBoundInput: '',
@@ -82,6 +87,7 @@ export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
   },
   {
     id: 'row-6',
+    intervalInput: '',
     intervalText: '174 ≤ h ≤ 180',
     lowerBoundInput: '',
     upperBoundInput: '',

@@ -217,7 +217,7 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {examRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
-                    <td className="py-2 px-3 font-mono font-medium">{row.intervalText}</td>
+                    <td className="py-2 px-3 font-mono font-medium">{row.intervalInput || row.intervalText}</td>
                     <td className="py-2 px-3 font-mono">{row.lowerBoundInput || row.targetLower}</td>
                     <td className="py-2 px-3 font-mono">{row.upperBoundInput || row.targetUpper}</td>
                     <td className="py-2 px-3 font-mono font-bold text-indigo-700">{row.classWidthInput || row.targetWidth}</td>

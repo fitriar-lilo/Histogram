@@ -42,7 +42,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   const [tableFeedback, setTableFeedback] = useState<{
     checked: boolean;
     allCorrect: boolean;
-    rowStatus: Record<string, { lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }>;
+    rowStatus: Record<string, { intervalOk: boolean; lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }>;
     summaryMsg: string;
   }>({
     checked: false,
@@ -63,14 +63,28 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
   const [activeBarIdx, setActiveBarIdx] = useState<number>(0);
 
+  const [lastActiveRowId, setLastActiveRowId] = useState<string>('row-1');
+
   // Toggle crossing off a raw number
   const toggleMarkNumber = (idx: number) => {
     setMarkedNumbers(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
-  const handleRowInputChange = (rowId: string, field: 'lower' | 'upper' | 'width' | 'freq', val: string) => {
+  // Helper to validate student's class interval input
+  const checkIntervalString = (input: string, lower: number, upper: number) => {
+    if (!input || !input.trim()) return false;
+    const clean = input.replace(/\s+/g, '').toLowerCase();
+    // Check if both lower and upper numbers are present
+    const hasLower = clean.includes(lower.toString());
+    const hasUpper = clean.includes(upper.toString());
+    return hasLower && hasUpper;
+  };
+
+  const handleRowInputChange = (rowId: string, field: 'interval' | 'lower' | 'upper' | 'width' | 'freq', val: string) => {
+    setLastActiveRowId(rowId);
     const updated = tableRows.map(r => {
       if (r.id !== rowId) return r;
+      if (field === 'interval') return { ...r, intervalInput: val };
       if (field === 'lower') return { ...r, lowerBoundInput: val };
       if (field === 'upper') return { ...r, upperBoundInput: val };
       if (field === 'width') {
@@ -85,6 +99,13 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     });
     onUpdateTableRows(updated);
     setTableFeedback(prev => ({ ...prev, checked: false }));
+  };
+
+  const handleInsertSymbol = (sym: string) => {
+    const targetRow = tableRows.find(r => r.id === lastActiveRowId) || tableRows[0];
+    if (!targetRow) return;
+    const current = targetRow.intervalInput || '';
+    handleRowInputChange(targetRow.id, 'interval', current + sym);
   };
 
   // Adjust bar width or height in the histogram builder
@@ -107,10 +128,11 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   // Check Table Inputs
   const handleCheckTable = () => {
     let allOk = true;
-    const statusMap: Record<string, { lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }> = {};
+    const statusMap: Record<string, { intervalOk: boolean; lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }> = {};
     let totalEnteredFreq = 0;
 
     tableRows.forEach(row => {
+      const intervalOk = checkIntervalString(row.intervalInput, row.targetLower, row.targetUpper);
       const lower = parseFloat(row.lowerBoundInput);
       const upper = parseFloat(row.upperBoundInput);
       const width = parseFloat(row.classWidthInput);
@@ -121,13 +143,13 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       const widthOk = width === row.targetWidth;
       const freqOk = freq === row.targetFreq;
 
-      if (!lowerOk || !upperOk || !widthOk || !freqOk) {
+      if (!intervalOk || !lowerOk || !upperOk || !widthOk || !freqOk) {
         allOk = false;
       }
 
       if (!isNaN(freq)) totalEnteredFreq += freq;
 
-      statusMap[row.id] = { lowerOk, upperOk, widthOk, freqOk };
+      statusMap[row.id] = { intervalOk, lowerOk, upperOk, widthOk, freqOk };
     });
 
     let summaryMsg = '';
@@ -139,7 +161,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       if (totalEnteredFreq !== 30) {
         summaryMsg = `Your total frequency adds up to ${totalEnteredFreq}, but there are 30 students in total. Double check your counts!`;
       } else {
-        summaryMsg = 'Check highlighted red cells below. Ensure class length is 6 for every row (Upper − Lower = 6).';
+        summaryMsg = 'Check highlighted red cells below. Ensure class intervals and boundaries span width 6 (Upper − Lower = 6).';
       }
     }
 
@@ -155,6 +177,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   const handleAutoFillTable = () => {
     const updated = tableRows.map(r => ({
       ...r,
+      intervalInput: r.intervalText,
       lowerBoundInput: r.targetLower.toString(),
       upperBoundInput: r.targetUpper.toString(),
       classWidthInput: r.targetWidth.toString(),
@@ -349,12 +372,52 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           </div>
         </div>
 
+        {/* Quick Symbol Helpers */}
+        <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 text-xs text-slate-600 bg-slate-50/80 border-b border-slate-200">
+          <span className="font-semibold text-slate-700">Quick Symbols:</span>
+          <button
+            type="button"
+            onClick={() => handleInsertSymbol(' ≤ ')}
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            title="Insert less-than-or-equal symbol"
+          >
+            + ≤
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertSymbol(' < ')}
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            title="Insert less-than symbol"
+          >
+            + &lt;
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertSymbol('h')}
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            title="Insert height variable h"
+          >
+            + h
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertSymbol(' ≤ h < ')}
+            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-mono font-bold rounded-md border border-indigo-200 shadow-2xs transition-colors"
+            title="Insert standard inequality notation"
+          >
+            + ≤ h &lt;
+          </button>
+          <span className="text-[11px] text-slate-400 ml-1">
+            (Appends to currently selected row)
+          </span>
+        </div>
+
         {/* The Interactive Input Table */}
         <div className="overflow-x-auto p-4">
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] border-b border-slate-200">
               <tr>
-                <th className="py-2.5 px-3">Class Interval</th>
+                <th className="py-2.5 px-3 text-indigo-950 font-extrabold">Class Interval (Your Input)</th>
                 <th className="py-2.5 px-3 text-indigo-900">Lower Bound</th>
                 <th className="py-2.5 px-3 text-indigo-900">Upper Bound</th>
                 <th className="py-2.5 px-3 text-indigo-900">Class Width (w)</th>
@@ -369,8 +432,22 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
                 return (
                   <tr key={row.id} className="hover:bg-slate-50/70">
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                      {row.intervalText}
+                    {/* Class Interval Student Input */}
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="text"
+                        placeholder="e.g. 144 ≤ h < 150"
+                        value={row.intervalInput}
+                        onFocus={() => setLastActiveRowId(row.id)}
+                        onChange={(e) => handleRowInputChange(row.id, 'interval', e.target.value)}
+                        className={`w-36 sm:w-44 px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border focus:ring-2 focus:ring-indigo-500 outline-none ${
+                          isChecked && rowStatus
+                            ? rowStatus.intervalOk
+                              ? 'bg-emerald-50 border-emerald-400 text-emerald-900'
+                              : 'bg-rose-50 border-rose-400 text-rose-900'
+                            : 'bg-white border-slate-300 text-slate-800'
+                        }`}
+                      />
                     </td>
 
                     {/* Lower Bound input */}
@@ -379,6 +456,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                         type="number"
                         placeholder="e.g. 144"
                         value={row.lowerBoundInput}
+                        onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'lower', e.target.value)}
                         className={`w-20 px-2 py-1.5 text-xs font-mono font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 outline-none ${
                           isChecked && rowStatus
@@ -396,6 +474,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                         type="number"
                         placeholder="e.g. 150"
                         value={row.upperBoundInput}
+                        onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'upper', e.target.value)}
                         className={`w-20 px-2 py-1.5 text-xs font-mono font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 outline-none ${
                           isChecked && rowStatus
@@ -413,6 +492,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                         type="number"
                         placeholder="6"
                         value={row.classWidthInput}
+                        onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'width', e.target.value)}
                         className={`w-16 px-2 py-1.5 text-xs font-mono font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 outline-none ${
                           isChecked && rowStatus
@@ -430,6 +510,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                         type="number"
                         placeholder="Count"
                         value={row.frequencyInput}
+                        onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'freq', e.target.value)}
                         className={`w-20 px-2 py-1.5 text-xs font-mono font-black rounded-lg border focus:ring-2 focus:ring-emerald-500 outline-none ${
                           isChecked && rowStatus
@@ -444,7 +525,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     {/* Status cell */}
                     <td className="py-2.5 px-3">
                       {isChecked && rowStatus ? (
-                        rowStatus.lowerOk && rowStatus.upperOk && rowStatus.widthOk && rowStatus.freqOk ? (
+                        rowStatus.intervalOk && rowStatus.lowerOk && rowStatus.upperOk && rowStatus.widthOk && rowStatus.freqOk ? (
                           <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
                             <Check className="w-3.5 h-3.5" />
                             <span>Correct</span>
@@ -725,7 +806,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               Interactive Bar Controls (Click a bar below to adjust its Width & Height):
             </span>
             <span className="text-xs text-indigo-700 font-semibold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-              Selected: Bar {activeBarIdx + 1} ({tableRows[activeBarIdx]?.intervalText})
+              Selected: Bar {activeBarIdx + 1} ({tableRows[activeBarIdx]?.intervalInput || tableRows[activeBarIdx]?.intervalText})
             </span>
           </div>
 
@@ -748,8 +829,8 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                       : 'bg-white border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-slate-700 truncate">
-                    {r.intervalText}
+                  <div className="text-[11px] font-bold text-slate-700 truncate" title={r.intervalInput || r.intervalText}>
+                    {r.intervalInput || r.intervalText}
                   </div>
 
                   {/* Width Control */}

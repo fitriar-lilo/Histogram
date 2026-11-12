@@ -20,6 +20,7 @@ export interface GroupedInterval {
 
 export interface ExamTableRow {
   id: string;
+  intervalInput: string;
   intervalText: string;
   lowerBoundInput: string;
   upperBoundInput: string;

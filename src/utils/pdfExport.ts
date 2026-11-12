@@ -134,7 +134,7 @@ export const exportStudentReportPDF = (
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
-    doc.text(row.intervalText, 18, y + 4.2);
+    doc.text(row.intervalInput || row.intervalText, 18, y + 4.2);
     doc.text(row.lowerBoundInput || row.targetLower.toString(), 64, y + 4.2);
     doc.text(row.upperBoundInput || row.targetUpper.toString(), 98, y + 4.2);
     doc.text(row.classWidthInput || row.targetWidth.toString(), 134, y + 4.2);
