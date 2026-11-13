@@ -9,98 +9,68 @@ export const EXAM_HEIGHTS_DATA: number[] = [
   174, 177
 ];
 
-export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = [
-  {
-    id: 'row-1',
-    intervalInput: '',
-    intervalText: '144 ≤ h < 150',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 144,
-    targetUpper: 150,
-    targetWidth: 6,
-    targetFreq: 4
-  },
-  {
-    id: 'row-2',
-    intervalInput: '',
-    intervalText: '150 ≤ h < 156',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 150,
-    targetUpper: 156,
-    targetWidth: 6,
-    targetFreq: 6
-  },
-  {
-    id: 'row-3',
-    intervalInput: '',
-    intervalText: '156 ≤ h < 162',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 156,
-    targetUpper: 162,
-    targetWidth: 6,
-    targetFreq: 8
-  },
-  {
-    id: 'row-4',
-    intervalInput: '',
-    intervalText: '162 ≤ h < 168',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 162,
-    targetUpper: 168,
-    targetWidth: 6,
-    targetFreq: 6
-  },
-  {
-    id: 'row-5',
-    intervalInput: '',
-    intervalText: '168 ≤ h < 174',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 168,
-    targetUpper: 174,
-    targetWidth: 6,
-    targetFreq: 4
-  },
-  {
-    id: 'row-6',
-    intervalInput: '',
-    intervalText: '174 ≤ h ≤ 180',
-    lowerBoundInput: '',
-    upperBoundInput: '',
-    classWidthInput: '',
-    frequencyInput: '',
-    userBarHeight: 0,
-    userBarWidth: 6,
-    targetLower: 174,
-    targetUpper: 180,
-    targetWidth: 6,
-    targetFreq: 2
+export const EXAM_CLASS_WIDTH_OPTIONS = [5, 6, 7, 8, 9] as const;
+
+export const getExamStartBound = (classWidth: number): number => {
+  // Choose clean starting lower bounds for each width (5 to 9) so min=145 and max=177 are neatly covered
+  switch (classWidth) {
+    case 5:
+      return 145;
+    case 6:
+      return 144;
+    case 7:
+      return 145;
+    case 8:
+      return 144;
+    case 9:
+      return 144;
+    default:
+      return Math.floor(145 / classWidth) * classWidth;
   }
-];
+};
+
+export const buildExamTableRows = (classWidth: number): ExamTableRow[] => {
+  const width = Math.max(5, Math.min(9, Math.round(classWidth)));
+  const start = getExamStartBound(width);
+  const maxData = Math.max(...EXAM_HEIGHTS_DATA); // 177
+  const rows: ExamTableRow[] = [];
+
+  let currentLower = start;
+  let idx = 1;
+
+  while (currentLower <= maxData) {
+    const currentUpper = currentLower + width;
+    const isLast = currentUpper > maxData;
+    const freq = EXAM_HEIGHTS_DATA.filter((val) =>
+      isLast ? val >= currentLower && val <= currentUpper : val >= currentLower && val < currentUpper
+    ).length;
+
+    rows.push({
+      id: `row-${idx}`,
+      intervalInput: '',
+      intervalText: isLast
+        ? `${currentLower} ≤ h ≤ ${currentUpper}`
+        : `${currentLower} ≤ h < ${currentUpper}`,
+      lowerBoundInput: '',
+      upperBoundInput: '',
+      classWidthInput: '',
+      frequencyInput: '',
+      userBarHeight: 0,
+      userBarWidth: width,
+      targetLower: currentLower,
+      targetUpper: currentUpper,
+      targetWidth: width,
+      targetFreq: freq
+    });
+
+    currentLower = currentUpper;
+    idx += 1;
+  }
+
+  return rows;
+};
+
+export const INITIAL_EXAM_TABLE_ROWS: ExamTableRow[] = buildExamTableRows(6);
 
 export const DATASET_PRESETS: DatasetPreset[] = [
   {

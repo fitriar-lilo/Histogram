@@ -67,6 +67,7 @@ export interface StudentProgress {
   completedTallies: boolean;
   histogramVerified: boolean;
   examTableRows: ExamTableRow[];
+  examClassWidth: number;
   examTableVerified: boolean;
   examHistogramVerified: boolean;
   customIntervals: GroupedInterval[];

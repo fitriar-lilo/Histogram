@@ -41,6 +41,7 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
   };
 
   const studentNameDisplay = progress.profile.name.trim() || 'Student Name (Not specified)';
+  const classWidth = progress.examClassWidth || 6;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
@@ -57,7 +58,7 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
             </h2>
             <p className="text-blue-100 text-sm sm:text-base max-w-2xl leading-relaxed">
               You have completed the definitions, converted single raw data into equal class groups, built the histogram,
-              and successfully completed the 30 Students' Heights exam task (class length = 6).
+              and successfully completed the 30 Students' Heights exam task (class length = {classWidth}).
             </p>
           </div>
 
@@ -135,14 +136,14 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
             <span>Student Reflection & Key Takeaways</span>
           </h3>
           <p className="text-xs text-slate-500">
-            Write down what you learned today (e.g. why histogram bars touch, how class width = 6 is maintained):
+            Write down what you learned today (e.g. why histogram bars touch, how class width = {classWidth} is maintained):
           </p>
 
           <textarea
             rows={5}
             value={progress.studentNotes}
             onChange={(e) => onUpdateNotes(e.target.value)}
-            placeholder="e.g. Today I learned that a histogram is for continuous numerical data, so bars must touch without gaps. I grouped 30 student heights into equal intervals of width 6 and accurately drew touching bars matching the frequencies."
+            placeholder={`e.g. Today I learned that a histogram is for continuous numerical data, so bars must touch without gaps. I grouped 30 student heights into equal intervals of width ${classWidth} and accurately drew touching bars matching the frequencies.`}
             className="w-full p-3 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed"
           />
         </div>
@@ -182,12 +183,12 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
             <div className="text-[11px] font-semibold text-slate-500 uppercase">Exam Class Length</div>
-            <div className="text-lg font-black text-emerald-700 mt-0.5">w = 6 (Equal)</div>
+            <div className="text-lg font-black text-emerald-700 mt-0.5">w = {classWidth} (Equal)</div>
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
             <div className="text-[11px] font-semibold text-slate-500 uppercase">30 Heights Grouped</div>
-            <div className="text-lg font-black text-purple-700 mt-0.5">6 Touching Bars</div>
+            <div className="text-lg font-black text-purple-700 mt-0.5">{examRows.length} Touching Bars</div>
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
@@ -199,7 +200,7 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
         {/* Exam Table Review */}
         <div>
           <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-            Completed Exam Frequency Table (30 Students' Heights, Class Length = 6):
+            Completed Exam Frequency Table (30 Students' Heights, Class Length = {classWidth}):
           </h4>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
@@ -222,7 +223,7 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
                     <td className="py-2 px-3 font-mono">{row.upperBoundInput || row.targetUpper}</td>
                     <td className="py-2 px-3 font-mono font-bold text-indigo-700">{row.classWidthInput || row.targetWidth}</td>
                     <td className="py-2 px-3 font-mono font-bold text-emerald-700">{row.frequencyInput || row.targetFreq}</td>
-                    <td className="py-2 px-3 font-mono">{row.userBarWidth || 6}</td>
+                    <td className="py-2 px-3 font-mono">{row.userBarWidth || classWidth}</td>
                     <td className="py-2 px-3 font-mono font-bold text-indigo-600">{row.userBarHeight || row.targetFreq}</td>
                   </tr>
                 ))}

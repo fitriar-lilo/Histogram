@@ -30,6 +30,7 @@ export const getInitialProgress = (): StudentProgress => {
     completedTallies: false,
     histogramVerified: false,
     examTableRows: INITIAL_EXAM_TABLE_ROWS,
+    examClassWidth: 6,
     examTableVerified: false,
     examHistogramVerified: false,
     customIntervals: defaultIntervals,
@@ -42,7 +43,11 @@ export const loadSavedProgress = (): StudentProgress => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return getInitialProgress();
     const parsed = JSON.parse(raw);
-    return { ...getInitialProgress(), ...parsed };
+    const merged = { ...getInitialProgress(), ...parsed };
+    if (!merged.examClassWidth || merged.examClassWidth < 5 || merged.examClassWidth > 9) {
+      merged.examClassWidth = 6;
+    }
+    return merged;
   } catch (e) {
     console.warn('Failed to load saved progress:', e);
     return getInitialProgress();

@@ -1,25 +1,24 @@
 import React, { useState } from 'react';
 import { ExamTableRow } from '../types';
-import { EXAM_HEIGHTS_DATA } from '../data/curriculumData';
+import { EXAM_HEIGHTS_DATA, EXAM_CLASS_WIDTH_OPTIONS } from '../data/curriculumData';
 import confetti from 'canvas-confetti';
 import { 
   Award, 
   CheckCircle2, 
   AlertCircle, 
   ArrowRight, 
-  Sparkles, 
   Check, 
-  Info, 
   Plus, 
   Minus, 
   RotateCcw,
   Wand2,
-  Table2,
-  BarChart3,
-  Lightbulb
+  Lightbulb,
+  Sliders
 } from 'lucide-react';
 
 interface ExamPracticeProps {
+  selectedClassWidth: number;
+  onChangeClassWidth: (width: number) => void;
   tableRows: ExamTableRow[];
   onUpdateTableRows: (rows: ExamTableRow[]) => void;
   onTableVerified: () => void;
@@ -30,6 +29,8 @@ interface ExamPracticeProps {
 }
 
 export const ExamPractice: React.FC<ExamPracticeProps> = ({
+  selectedClassWidth,
+  onChangeClassWidth,
   tableRows,
   onUpdateTableRows,
   onTableVerified,
@@ -62,8 +63,28 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   });
 
   const [activeBarIdx, setActiveBarIdx] = useState<number>(0);
-
   const [lastActiveRowId, setLastActiveRowId] = useState<string>('row-1');
+
+  const safeActiveBarIdx = Math.min(activeBarIdx, Math.max(0, tableRows.length - 1));
+
+  // Switch class width (5 to 9)
+  const handleSelectWidth = (width: number) => {
+    if (width === selectedClassWidth) return;
+    onChangeClassWidth(width);
+    setTableFeedback({
+      checked: false,
+      allCorrect: false,
+      rowStatus: {},
+      summaryMsg: ''
+    });
+    setHistogramFeedback({
+      checked: false,
+      allCorrect: false,
+      errors: []
+    });
+    setActiveBarIdx(0);
+    setLastActiveRowId('row-1');
+  };
 
   // Toggle crossing off a raw number
   const toggleMarkNumber = (idx: number) => {
@@ -74,11 +95,62 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   const checkIntervalString = (input: string, lower: number, upper: number) => {
     if (!input || !input.trim()) return false;
     const clean = input.replace(/\s+/g, '').toLowerCase();
-    // Check if both lower and upper numbers are present
     const hasLower = clean.includes(lower.toString());
     const hasUpper = clean.includes(upper.toString());
     return hasLower && hasUpper;
   };
+
+  // Determine effective bounds for a row (student's valid continuous bounds if entered, otherwise default target)
+  const getEffectiveBounds = () => {
+    const parsed = tableRows.map((r) => ({
+      lower: parseFloat(r.lowerBoundInput),
+      upper: parseFloat(r.upperBoundInput),
+      width: parseFloat(r.classWidthInput),
+      freq: parseFloat(r.frequencyInput)
+    }));
+
+    const allBoundsValid = parsed.every(
+      (p, idx) =>
+        !isNaN(p.lower) &&
+        !isNaN(p.upper) &&
+        p.upper - p.lower === selectedClassWidth &&
+        (idx === 0 || p.lower === parsed[idx - 1].upper)
+    );
+
+    const minData = Math.min(...EXAM_HEIGHTS_DATA);
+    const maxData = Math.max(...EXAM_HEIGHTS_DATA);
+    const coversAllData =
+      allBoundsValid &&
+      parsed.length > 0 &&
+      parsed[0].lower <= minData &&
+      parsed[parsed.length - 1].upper >= maxData;
+
+    if (coversAllData) {
+      return parsed.map((p, idx) => {
+        const isLast = idx === parsed.length - 1;
+        const expectedFreq = EXAM_HEIGHTS_DATA.filter((val) =>
+          isLast ? val >= p.lower && val <= p.upper : val >= p.lower && val < p.upper
+        ).length;
+        return {
+          lower: p.lower,
+          upper: p.upper,
+          width: selectedClassWidth,
+          expectedFreq,
+          isCustomValid: true
+        };
+      });
+    }
+
+    return tableRows.map((r) => ({
+      lower: r.targetLower,
+      upper: r.targetUpper,
+      width: selectedClassWidth,
+      expectedFreq: r.targetFreq,
+      isCustomValid: false
+    }));
+  };
+
+  const effectiveBounds = getEffectiveBounds();
 
   const handleRowInputChange = (rowId: string, field: 'interval' | 'lower' | 'upper' | 'width' | 'freq', val: string) => {
     setLastActiveRowId(rowId);
@@ -88,8 +160,8 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       if (field === 'lower') return { ...r, lowerBoundInput: val };
       if (field === 'upper') return { ...r, upperBoundInput: val };
       if (field === 'width') {
-        const num = parseFloat(val) || 6;
-        return { ...r, classWidthInput: val, userBarWidth: num };
+        const num = parseFloat(val);
+        return { ...r, classWidthInput: val, userBarWidth: !isNaN(num) && num > 0 ? num : selectedClassWidth };
       }
       if (field === 'freq') {
         const num = parseFloat(val) || 0;
@@ -108,11 +180,19 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     handleRowInputChange(targetRow.id, 'interval', current + sym);
   };
 
+  // Graph y-scale
+  const maxTargetFreq = Math.max(
+    ...effectiveBounds.map((b) => b.expectedFreq),
+    ...tableRows.map((r) => r.userBarHeight || 0),
+    8
+  );
+  const maxY = Math.ceil((maxTargetFreq + 1) / 2) * 2;
+
   // Adjust bar width or height in the histogram builder
   const handleSetBarHeight = (idx: number, delta: number) => {
     const updated = [...tableRows];
     const currentH = updated[idx].userBarHeight || 0;
-    const newH = Math.max(0, Math.min(12, currentH + delta));
+    const newH = Math.max(0, Math.min(maxY + 2, currentH + delta));
     updated[idx] = { ...updated[idx], userBarHeight: newH };
     onUpdateTableRows(updated);
     setHistogramFeedback(prev => ({ ...prev, checked: false }));
@@ -131,17 +211,18 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     const statusMap: Record<string, { intervalOk: boolean; lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }> = {};
     let totalEnteredFreq = 0;
 
-    tableRows.forEach(row => {
-      const intervalOk = checkIntervalString(row.intervalInput, row.targetLower, row.targetUpper);
+    tableRows.forEach((row, idx) => {
+      const target = effectiveBounds[idx];
       const lower = parseFloat(row.lowerBoundInput);
       const upper = parseFloat(row.upperBoundInput);
       const width = parseFloat(row.classWidthInput);
       const freq = parseFloat(row.frequencyInput);
 
-      const lowerOk = lower === row.targetLower;
-      const upperOk = upper === row.targetUpper;
-      const widthOk = width === row.targetWidth;
-      const freqOk = freq === row.targetFreq;
+      const intervalOk = checkIntervalString(row.intervalInput, target.lower, target.upper);
+      const lowerOk = lower === target.lower;
+      const upperOk = upper === target.upper;
+      const widthOk = width === selectedClassWidth;
+      const freqOk = freq === target.expectedFreq;
 
       if (!intervalOk || !lowerOk || !upperOk || !widthOk || !freqOk) {
         allOk = false;
@@ -154,14 +235,14 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
     let summaryMsg = '';
     if (allOk) {
-      summaryMsg = 'Outstanding! Every class interval, boundary, class width (6), and frequency count is correct!';
+      summaryMsg = `Outstanding! Every class interval, boundary, class width (${selectedClassWidth}), and frequency count is correct!`;
       onTableVerified();
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 } });
     } else {
       if (totalEnteredFreq !== 30) {
         summaryMsg = `Your total frequency adds up to ${totalEnteredFreq}, but there are 30 students in total. Double check your counts!`;
       } else {
-        summaryMsg = 'Check highlighted red cells below. Ensure class intervals and boundaries span width 6 (Upper − Lower = 6).';
+        summaryMsg = `Check highlighted red cells below. Ensure class intervals and boundaries span width ${selectedClassWidth} (Upper − Lower = ${selectedClassWidth}).`;
       }
     }
 
@@ -180,9 +261,9 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       intervalInput: r.intervalText,
       lowerBoundInput: r.targetLower.toString(),
       upperBoundInput: r.targetUpper.toString(),
-      classWidthInput: r.targetWidth.toString(),
+      classWidthInput: selectedClassWidth.toString(),
       frequencyInput: r.targetFreq.toString(),
-      userBarWidth: r.targetWidth,
+      userBarWidth: selectedClassWidth,
       userBarHeight: r.targetFreq
     }));
     onUpdateTableRows(updated);
@@ -191,7 +272,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       checked: true,
       allCorrect: true,
       rowStatus: {},
-      summaryMsg: 'Table filled with correct Cambridge values. Now build the histogram below!'
+      summaryMsg: `Table filled with Cambridge intervals for class width ${selectedClassWidth}. Now build the histogram below!`
     });
     confetti({ particleCount: 50, spread: 50 });
   };
@@ -200,14 +281,14 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   const handleCheckHistogram = () => {
     const errors: string[] = [];
     tableRows.forEach((r, idx) => {
-      const targetW = 6;
-      const targetH = r.targetFreq;
+      const target = effectiveBounds[idx];
+      const label = r.intervalInput || `${target.lower} ≤ h < ${target.upper}`;
 
-      if (r.userBarWidth !== targetW) {
-        errors.push(`Bar ${idx + 1} (${r.intervalText}): width is set to ${r.userBarWidth}, but required class length is 6.`);
+      if (r.userBarWidth !== selectedClassWidth) {
+        errors.push(`Bar ${idx + 1} (${label}): width is set to ${r.userBarWidth}, but chosen class length is ${selectedClassWidth}.`);
       }
-      if (r.userBarHeight !== targetH) {
-        errors.push(`Bar ${idx + 1} (${r.intervalText}): height is ${r.userBarHeight}, but frequency is ${targetH}.`);
+      if (r.userBarHeight !== target.expectedFreq) {
+        errors.push(`Bar ${idx + 1} (${label}): height is ${r.userBarHeight}, but frequency is ${target.expectedFreq}.`);
       }
     });
 
@@ -226,10 +307,10 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
   // Auto-align histogram bars
   const handleAutoAlignHistogram = () => {
-    const updated = tableRows.map(r => ({
+    const updated = tableRows.map((r, idx) => ({
       ...r,
-      userBarWidth: 6,
-      userBarHeight: r.targetFreq
+      userBarWidth: selectedClassWidth,
+      userBarHeight: effectiveBounds[idx].expectedFreq
     }));
     onUpdateTableRows(updated);
     onHistogramVerified();
@@ -251,12 +332,21 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   const plotWidth = svgWidth - marginLeft - marginRight;
   const plotHeight = svgHeight - marginTop - marginBottom;
 
-  const minX = 144;
-  const maxX = 180;
-  const totalSpan = maxX - minX; // 36
-  const maxY = 10;
+  const minX = effectiveBounds[0]?.lower ?? 144;
+  const maxX = effectiveBounds[effectiveBounds.length - 1]?.upper ?? 180;
+  const totalSpan = Math.max(1, maxX - minX);
 
+  const yTicks = Array.from({ length: Math.floor(maxY / 2) + 1 }, (_, i) => i * 2);
   const countedCount = Object.values(markedNumbers).filter(Boolean).length;
+
+  const barCardsGridClass =
+    tableRows.length === 4
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+      : tableRows.length === 5
+      ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5'
+      : tableRows.length === 6
+      ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6'
+      : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7';
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
@@ -272,16 +362,50 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               Build a Histogram: Heights of 30 Students
             </h2>
             <p className="text-blue-100 text-sm sm:text-base max-w-2xl leading-relaxed">
-              You are given single (raw) data of heights of 30 students. Group them with an <strong>equal class length of 6</strong>,
-              fill the frequency table, and then build the histogram by setting each bar's <strong>width and height</strong>!
+              You are given single (raw) data of heights of 30 students. Choose an <strong>equal class width from 5 to 9</strong>,
+              input your group data in the frequency table, and build the histogram by setting each bar's <strong>width and height</strong>!
             </p>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 text-center shrink-0 min-w-36">
-            <div className="text-xs uppercase font-semibold text-blue-200">Exam Requirement</div>
-            <div className="text-xl font-black text-amber-300 mt-0.5">Class Length = 6</div>
-            <div className="text-[11px] text-blue-100 mt-1">Total Students: 30</div>
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 text-center shrink-0 min-w-40">
+            <div className="text-xs uppercase font-semibold text-blue-200">Chosen Class Width</div>
+            <div className="text-xl font-black text-amber-300 mt-0.5">Class Length = {selectedClassWidth}</div>
+            <div className="text-[11px] text-blue-100 mt-1">
+              {tableRows.length} Groups • Total: 30
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Class Width Picker (5 to 9) */}
+      <div className="bg-white p-5 rounded-2xl border-2 border-indigo-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-indigo-600" />
+            <span>Step A: Choose Your Equal Class Width (5 to 9)</span>
+          </h3>
+          <p className="text-xs text-slate-500">
+            Select any class width from <strong>5 to 9</strong>. Your frequency table rows and histogram graph axis will adapt automatically.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {EXAM_CLASS_WIDTH_OPTIONS.map((w) => {
+            const isSelected = selectedClassWidth === w;
+            return (
+              <button
+                key={w}
+                onClick={() => handleSelectWidth(w)}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105'
+                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-300 hover:border-indigo-300'
+                }`}
+              >
+                w = {w}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -302,7 +426,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
           <button
             onClick={() => setMarkedNumbers({})}
-            className="text-xs text-slate-600 hover:text-indigo-600 font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-1 self-start sm:self-auto"
+            className="text-xs text-slate-600 hover:text-indigo-600 font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset Crossed Off</span>
@@ -330,11 +454,11 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           })}
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-indigo-900 bg-indigo-50 p-2.5 rounded-lg border border-indigo-100">
-          <Lightbulb className="w-4 h-4 text-indigo-600 shrink-0" />
+        <div className="flex items-start sm:items-center gap-2 text-xs text-indigo-900 bg-indigo-50 p-2.5 rounded-lg border border-indigo-100">
+          <Lightbulb className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5 sm:mt-0" />
           <span>
-            <strong>Cambridge Tip:</strong> All intervals have equal length <strong>6</strong>: 
-            144 ≤ h &lt; 150, 150 ≤ h &lt; 156, 156 ≤ h &lt; 162, 162 ≤ h &lt; 168, 168 ≤ h &lt; 174, 174 ≤ h ≤ 180.
+            <strong>Cambridge Tip (Width = {selectedClassWidth}):</strong> Minimum height is 145 cm and maximum is 177 cm.
+            Suggested starting bound is <strong>{tableRows[0]?.targetLower}</strong>, creating {tableRows.length} equal groups of length <strong>{selectedClassWidth}</strong> (e.g. {tableRows[0]?.intervalText}).
           </span>
         </div>
       </div>
@@ -347,24 +471,24 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center border border-indigo-200">
                 2
               </span>
-              <span>Complete the Frequency Table (Class Length = 6)</span>
+              <span>Complete the Frequency Table (Class Length = {selectedClassWidth})</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Input the Lower Bound, Upper Bound, Class Width, and counted Frequency for each row:
+              Input your own Class Intervals, Lower Bound, Upper Bound, Class Width ({selectedClassWidth}), and counted Frequency for each row:
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleAutoFillTable}
-              className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors"
+              className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Wand2 className="w-3.5 h-3.5 text-amber-500" />
               <span>Fill Table Guide</span>
             </button>
             <button
               onClick={handleCheckTable}
-              className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+              className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Check My Table</span>
@@ -378,7 +502,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           <button
             type="button"
             onClick={() => handleInsertSymbol(' ≤ ')}
-            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors cursor-pointer"
             title="Insert less-than-or-equal symbol"
           >
             + ≤
@@ -386,7 +510,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           <button
             type="button"
             onClick={() => handleInsertSymbol(' < ')}
-            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors cursor-pointer"
             title="Insert less-than symbol"
           >
             + &lt;
@@ -394,7 +518,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           <button
             type="button"
             onClick={() => handleInsertSymbol('h')}
-            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors"
+            className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-mono font-bold rounded-md border border-slate-300 hover:border-indigo-400 shadow-2xs transition-colors cursor-pointer"
             title="Insert height variable h"
           >
             + h
@@ -402,7 +526,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           <button
             type="button"
             onClick={() => handleInsertSymbol(' ≤ h < ')}
-            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-mono font-bold rounded-md border border-indigo-200 shadow-2xs transition-colors"
+            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-mono font-bold rounded-md border border-indigo-200 shadow-2xs transition-colors cursor-pointer"
             title="Insert standard inequality notation"
           >
             + ≤ h &lt;
@@ -426,7 +550,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {tableRows.map((row) => {
+              {tableRows.map((row, idx) => {
                 const rowStatus = tableFeedback.rowStatus[row.id];
                 const isChecked = tableFeedback.checked;
 
@@ -436,7 +560,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     <td className="py-2.5 px-3">
                       <input
                         type="text"
-                        placeholder="e.g. 144 ≤ h < 150"
+                        placeholder={idx === 0 ? `e.g. ${row.intervalText}` : 'Enter interval...'}
                         value={row.intervalInput}
                         onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'interval', e.target.value)}
@@ -454,7 +578,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     <td className="py-2.5 px-3">
                       <input
                         type="number"
-                        placeholder="e.g. 144"
+                        placeholder={idx === 0 ? `e.g. ${row.targetLower}` : ''}
                         value={row.lowerBoundInput}
                         onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'lower', e.target.value)}
@@ -472,7 +596,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     <td className="py-2.5 px-3">
                       <input
                         type="number"
-                        placeholder="e.g. 150"
+                        placeholder={idx === 0 ? `e.g. ${row.targetUpper}` : ''}
                         value={row.upperBoundInput}
                         onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'upper', e.target.value)}
@@ -490,7 +614,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     <td className="py-2.5 px-3">
                       <input
                         type="number"
-                        placeholder="6"
+                        placeholder={selectedClassWidth.toString()}
                         value={row.classWidthInput}
                         onFocus={() => setLastActiveRowId(row.id)}
                         onChange={(e) => handleRowInputChange(row.id, 'width', e.target.value)}
@@ -586,21 +710,21 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               <span>Build the Histogram: Determine Width & Height of Each Bar</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Use the Cambridge graph canvas below. For each bar, set its <strong>width (class length = 6)</strong> and <strong>height (frequency)</strong>.
+              Use the Cambridge graph canvas below. For each bar, set its <strong>width (class length = {selectedClassWidth})</strong> and <strong>height (frequency)</strong>.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleAutoAlignHistogram}
-              className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors"
+              className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Wand2 className="w-3.5 h-3.5 text-amber-500" />
               <span>Auto-Align Histogram</span>
             </button>
             <button
               onClick={handleCheckHistogram}
-              className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+              className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Check My Histogram</span>
@@ -622,8 +746,8 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               strokeWidth="1"
             />
 
-            {/* Horizontal Grid lines (Frequency 0 to 10) */}
-            {[0, 2, 4, 6, 8, 10].map((tick) => {
+            {/* Horizontal Grid lines */}
+            {yTicks.map((tick) => {
               const yPos = marginTop + plotHeight - (tick / maxY) * plotHeight;
               return (
                 <g key={tick}>
@@ -666,10 +790,9 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
             {/* STUDENT DRAWN HISTOGRAM BARS */}
             {tableRows.map((row, idx) => {
-              // Position computed from row.targetLower
-              const leftNorm = (row.targetLower - minX) / totalSpan;
-              // User determined bar width (normalized)
-              const userWidth = row.userBarWidth || 6;
+              const bounds = effectiveBounds[idx];
+              const leftNorm = (bounds.lower - minX) / totalSpan;
+              const userWidth = row.userBarWidth || selectedClassWidth;
               const widthNorm = userWidth / totalSpan;
 
               const barX = marginLeft + leftNorm * plotWidth;
@@ -679,9 +802,9 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               const barHeightPx = (userH / maxY) * plotHeight;
               const barY = marginTop + plotHeight - barHeightPx;
 
-              const isSelected = activeBarIdx === idx;
-              const isCorrectHeight = row.userBarHeight === row.targetFreq;
-              const isCorrectWidth = row.userBarWidth === 6;
+              const isSelected = safeActiveBarIdx === idx;
+              const isCorrectHeight = row.userBarHeight === bounds.expectedFreq;
+              const isCorrectWidth = row.userBarWidth === selectedClassWidth;
 
               return (
                 <g key={row.id} className="cursor-pointer" onClick={() => setActiveBarIdx(idx)}>
@@ -744,7 +867,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                     fontWeight="bold"
                     fill="#1e293b"
                   >
-                    {row.targetLower}
+                    {bounds.lower}
                   </text>
 
                   {/* Last boundary */}
@@ -767,7 +890,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                         fontWeight="bold"
                         fill="#1e293b"
                       >
-                        {row.targetUpper}
+                        {bounds.upper}
                       </text>
                     </>
                   )}
@@ -794,7 +917,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               fontWeight="bold"
               fill="#0f172a"
             >
-              Continuous Scale: Height (h cm) — Equal Class Length = 6
+              Continuous Scale: Height (h cm) — Equal Class Length = {selectedClassWidth}
             </text>
           </svg>
         </div>
@@ -806,16 +929,21 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               Interactive Bar Controls (Click a bar below to adjust its Width & Height):
             </span>
             <span className="text-xs text-indigo-700 font-semibold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-              Selected: Bar {activeBarIdx + 1} ({tableRows[activeBarIdx]?.intervalInput || tableRows[activeBarIdx]?.intervalText})
+              Selected: Bar {safeActiveBarIdx + 1} ({tableRows[safeActiveBarIdx]?.intervalInput || `${effectiveBounds[safeActiveBarIdx]?.lower} ≤ h < ${effectiveBounds[safeActiveBarIdx]?.upper}`})
             </span>
           </div>
 
           {/* Cards for each bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className={`grid ${barCardsGridClass} gap-3`}>
             {tableRows.map((r, idx) => {
-              const isSelected = activeBarIdx === idx;
-              const isMatchH = r.userBarHeight === r.targetFreq;
-              const isMatchW = r.userBarWidth === 6;
+              const bounds = effectiveBounds[idx];
+              const isSelected = safeActiveBarIdx === idx;
+              const isMatchH = r.userBarHeight === bounds.expectedFreq;
+              const isMatchW = r.userBarWidth === selectedClassWidth;
+              const fallbackLabel = idx === tableRows.length - 1
+                ? `${bounds.lower} ≤ h ≤ ${bounds.upper}`
+                : `${bounds.lower} ≤ h < ${bounds.upper}`;
+              const displayLabel = r.intervalInput || fallbackLabel;
 
               return (
                 <div
@@ -829,35 +957,35 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                       : 'bg-white border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-slate-700 truncate" title={r.intervalInput || r.intervalText}>
-                    {r.intervalInput || r.intervalText}
+                  <div className="text-[11px] font-bold text-slate-700 truncate" title={displayLabel}>
+                    {displayLabel}
                   </div>
 
                   {/* Width Control */}
                   <div className="mt-2 text-[11px] text-slate-600 flex items-center justify-between">
                     <span>Width:</span>
                     <span className={`font-mono font-bold ${isMatchW ? 'text-emerald-700' : 'text-amber-600'}`}>
-                      w = {r.userBarWidth || 6}
+                      w = {r.userBarWidth || selectedClassWidth}
                     </span>
                   </div>
                   <div className="flex items-center justify-center gap-1 mt-1">
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, (r.userBarWidth || 6) - 1); }}
-                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold"
+                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, (r.userBarWidth || selectedClassWidth) - 1); }}
+                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold cursor-pointer"
                       title="Decrease width"
                     >
                       -
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, 6); }}
-                      className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold"
-                      title="Set to required 6"
+                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, selectedClassWidth); }}
+                      className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold cursor-pointer"
+                      title={`Set to chosen width ${selectedClassWidth}`}
                     >
-                      Set 6
+                      Set {selectedClassWidth}
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, (r.userBarWidth || 6) + 1); }}
-                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold"
+                      onClick={(e) => { e.stopPropagation(); handleSetBarWidth(idx, (r.userBarWidth || selectedClassWidth) + 1); }}
+                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold cursor-pointer"
                       title="Increase width"
                     >
                       +
@@ -874,14 +1002,14 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                   <div className="flex items-center justify-center gap-1.5 mt-1">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleSetBarHeight(idx, -1); }}
-                      className="w-6 h-6 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded flex items-center justify-center text-xs font-bold"
+                      className="w-6 h-6 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded flex items-center justify-center text-xs font-bold cursor-pointer"
                       title="Decrease height"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleSetBarHeight(idx, 1); }}
-                      className="w-6 h-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded flex items-center justify-center text-xs font-bold shadow-2xs"
+                      className="w-6 h-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded flex items-center justify-center text-xs font-bold shadow-2xs cursor-pointer"
                       title="Increase height"
                     >
                       <Plus className="w-3 h-3" />
@@ -914,7 +1042,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
                 </h4>
                 {histogramFeedback.allCorrect ? (
                   <p className="text-xs text-emerald-800">
-                    Each bar has equal width 6, all adjacent bars touch seamlessly without gaps, and every height matches the frequency.
+                    Each bar has equal width {selectedClassWidth}, all adjacent bars touch seamlessly without gaps, and every height matches the frequency.
                   </p>
                 ) : (
                   <ul className="text-xs space-y-0.5 list-disc pl-4 text-amber-900">
@@ -931,12 +1059,12 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
         {/* Next Step Action */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
           <div className="text-xs text-slate-600">
-            <strong>Exam Practice Complete!</strong> You grouped single continuous data into equal class lengths of 6 and constructed the touching histogram.
+            <strong>Exam Practice Complete!</strong> You grouped single continuous data into equal class lengths of {selectedClassWidth} and constructed the touching histogram.
           </div>
 
           <button
             onClick={onGoToExport}
-            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Proceed to Step 5: Download PDF Report</span>
             <ArrowRight className="w-4 h-4" />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ModuleTab, StudentProgress, GroupedInterval, ExamTableRow } from './types';
-import { DATASET_PRESETS } from './data/curriculumData';
+import { DATASET_PRESETS, buildExamTableRows } from './data/curriculumData';
 import { loadSavedProgress, saveStudentProgress, clearStudentProgress, getInitialProgress } from './utils/storage';
 import { Header } from './components/Header';
 import { ConceptComparison } from './components/ConceptComparison';
@@ -95,6 +95,16 @@ export default function App() {
     setProgress(prev => ({
       ...prev,
       examHistogramVerified: true
+    }));
+  };
+
+  const handleChangeExamClassWidth = (width: number) => {
+    setProgress(prev => ({
+      ...prev,
+      examClassWidth: width,
+      examTableRows: buildExamTableRows(width),
+      examTableVerified: false,
+      examHistogramVerified: false
     }));
   };
 
@@ -195,6 +205,8 @@ export default function App() {
 
         {progress.currentTab === 'practice' && (
           <ExamPractice
+            selectedClassWidth={progress.examClassWidth || 6}
+            onChangeClassWidth={handleChangeExamClassWidth}
             tableRows={progress.examTableRows}
             onUpdateTableRows={handleUpdateExamTableRows}
             onTableVerified={handleExamTableVerified}
@@ -233,7 +245,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-700">Cambridge IGCSE 0580 Mathematics</span>
             <span>•</span>
-            <span>Chapter 20: Histograms (Equal Class Length = 6)</span>
+            <span>Chapter 20: Histograms (Equal Class Length = {progress.examClassWidth || 6})</span>
           </div>
           <div className="flex items-center gap-4">
             <button
