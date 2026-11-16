@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { ModuleTab, StudentProgress, GroupedInterval, ExamTableRow } from './types';
+import { ModuleTab, StudentProgress, GroupedInterval, ExamTableRow, UnequalExamRow } from './types';
 import { DATASET_PRESETS, buildExamTableRows } from './data/curriculumData';
 import { loadSavedProgress, saveStudentProgress, clearStudentProgress, getInitialProgress } from './utils/storage';
+import { exportSection4PDF, exportSection7PDF } from './utils/pdfExport';
 import { Header } from './components/Header';
 import { ConceptComparison } from './components/ConceptComparison';
 import { DataGroupingLab } from './components/DataGroupingLab';
 import { HistogramBuilder } from './components/HistogramBuilder';
 import { ExamPractice } from './components/ExamPractice';
+import { UnequalWidthConcept } from './components/UnequalWidthConcept';
+import { UnequalWidthSample } from './components/UnequalWidthSample';
+import { UnequalExamPractice } from './components/UnequalExamPractice';
 import { SummaryAndPdfExport } from './components/SummaryAndPdfExport';
 import { CambridgeGuideModal } from './components/CambridgeGuideModal';
 import { 
@@ -108,6 +112,45 @@ export default function App() {
     }));
   };
 
+  // Step 5: Unequal Width Concept Complete
+  const handleUnequalConceptComplete = (score: number) => {
+    setProgress(prev => ({
+      ...prev,
+      unequalConceptScore: score,
+      unequalConceptCompleted: true
+    }));
+  };
+
+  // Step 6: Unequal Width Sample Complete
+  const handleUnequalSampleComplete = () => {
+    setProgress(prev => ({
+      ...prev,
+      unequalSampleCompleted: true
+    }));
+  };
+
+  // Step 7: Unequal Width Exam Practice handlers
+  const handleUpdateUnequalRows = (rows: UnequalExamRow[]) => {
+    setProgress(prev => ({
+      ...prev,
+      unequalExamRows: rows
+    }));
+  };
+
+  const handleUnequalTableVerified = () => {
+    setProgress(prev => ({
+      ...prev,
+      unequalTableVerified: true
+    }));
+  };
+
+  const handleUnequalHistogramVerified = () => {
+    setProgress(prev => ({
+      ...prev,
+      unequalHistogramVerified: true
+    }));
+  };
+
   // Reset Progress
   const handleConfirmReset = () => {
     clearStudentProgress();
@@ -122,6 +165,9 @@ export default function App() {
     grouping: progress.completedTallies,
     histogram: progress.histogramVerified,
     practice: progress.examTableVerified && progress.examHistogramVerified,
+    'unequal-concept': progress.unequalConceptCompleted,
+    'unequal-sample': progress.unequalSampleCompleted,
+    'unequal-practice': progress.unequalTableVerified && progress.unequalHistogramVerified,
     export: false
   };
 
@@ -213,6 +259,37 @@ export default function App() {
             isTableVerified={progress.examTableVerified}
             onHistogramVerified={handleExamHistogramVerified}
             isHistogramVerified={progress.examHistogramVerified}
+            onDownloadPdf={() => exportSection4PDF(progress, progress.examTableRows)}
+            onGoToExport={() => handleSelectTab('unequal-concept')}
+          />
+        )}
+
+        {progress.currentTab === 'unequal-concept' && (
+          <UnequalWidthConcept
+            onComplete={handleUnequalConceptComplete}
+            isCompleted={progress.unequalConceptCompleted}
+            savedScore={progress.unequalConceptScore}
+            onGoToSample={() => handleSelectTab('unequal-sample')}
+          />
+        )}
+
+        {progress.currentTab === 'unequal-sample' && (
+          <UnequalWidthSample
+            isCompleted={progress.unequalSampleCompleted}
+            onComplete={handleUnequalSampleComplete}
+            onGoToExam={() => handleSelectTab('unequal-practice')}
+          />
+        )}
+
+        {progress.currentTab === 'unequal-practice' && (
+          <UnequalExamPractice
+            tableRows={progress.unequalExamRows}
+            onUpdateTableRows={handleUpdateUnequalRows}
+            onTableVerified={handleUnequalTableVerified}
+            isTableVerified={progress.unequalTableVerified}
+            onHistogramVerified={handleUnequalHistogramVerified}
+            isHistogramVerified={progress.unequalHistogramVerified}
+            onDownloadPdf={() => exportSection7PDF(progress, progress.unequalExamRows)}
             onGoToExport={() => handleSelectTab('export')}
           />
         )}
@@ -220,8 +297,8 @@ export default function App() {
         {progress.currentTab === 'export' && (
           <SummaryAndPdfExport
             progress={progress}
-            dataset={currentDataset}
             examRows={progress.examTableRows}
+            unequalRows={progress.unequalExamRows}
             onUpdateNotes={(notes) => setProgress(prev => ({ ...prev, studentNotes: notes }))}
             onUpdateProfile={(name, className, teacher) => {
               setProgress(prev => ({
@@ -245,7 +322,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-700">Cambridge IGCSE 0580 Mathematics</span>
             <span>•</span>
-            <span>Chapter 20: Histograms (Equal Class Length = {progress.examClassWidth || 6})</span>
+            <span>Chapter 20: Histograms (Equal &amp; Unequal Class Widths)</span>
           </div>
           <div className="flex items-center gap-4">
             <button

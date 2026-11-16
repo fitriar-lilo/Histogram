@@ -9,7 +9,9 @@ import {
   CheckCircle2, 
   RotateCcw,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Scale,
+  BookOpen
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -35,8 +37,11 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'concept', label: '1. What is a Histogram?', icon: <BarChart3 className="w-4 h-4" />, step: 'Step 1' },
     { id: 'grouping', label: '2. Grouping Raw Data', icon: <Table2 className="w-4 h-4" />, step: 'Step 2' },
     { id: 'histogram', label: '3. Guided Histogram', icon: <BarChart3 className="w-4 h-4 rotate-90" />, step: 'Step 3' },
-    { id: 'practice', label: '4. Exam Practice (30 Heights)', icon: <Award className="w-4 h-4" />, step: 'Step 4' },
-    { id: 'export', label: '5. Download PDF', icon: <Download className="w-4 h-4" />, step: 'Step 5' },
+    { id: 'practice', label: '4. Exam: Equal Width', icon: <Award className="w-4 h-4" />, step: 'Step 4' },
+    { id: 'unequal-concept', label: '5. Unequal Widths & FD', icon: <Scale className="w-4 h-4" />, step: 'Step 5' },
+    { id: 'unequal-sample', label: '6. Sample: Unequal Width', icon: <BookOpen className="w-4 h-4" />, step: 'Step 6' },
+    { id: 'unequal-practice', label: '7. Exam: Unequal Width', icon: <Award className="w-4 h-4" />, step: 'Step 7' },
+    { id: 'export', label: '8. Download PDFs', icon: <Download className="w-4 h-4" />, step: 'Step 8' }
   ];
 
   const completedCount = Object.values(completedSteps).filter(Boolean).length;

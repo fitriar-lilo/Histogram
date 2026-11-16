@@ -1,5 +1,9 @@
 import { StudentProgress } from '../types';
-import { DATASET_PRESETS, INITIAL_EXAM_TABLE_ROWS } from '../data/curriculumData';
+import {
+  DATASET_PRESETS,
+  INITIAL_EXAM_TABLE_ROWS,
+  INITIAL_UNEQUAL_EXAM_ROWS
+} from '../data/curriculumData';
 
 const STORAGE_KEY = 'cambridge_0580_histogram_lab_v2';
 
@@ -33,6 +37,12 @@ export const getInitialProgress = (): StudentProgress => {
     examClassWidth: 6,
     examTableVerified: false,
     examHistogramVerified: false,
+    unequalConceptCompleted: false,
+    unequalConceptScore: 0,
+    unequalSampleCompleted: false,
+    unequalExamRows: INITIAL_UNEQUAL_EXAM_ROWS,
+    unequalTableVerified: false,
+    unequalHistogramVerified: false,
     customIntervals: defaultIntervals,
     studentNotes: ''
   };
@@ -46,6 +56,9 @@ export const loadSavedProgress = (): StudentProgress => {
     const merged = { ...getInitialProgress(), ...parsed };
     if (!merged.examClassWidth || merged.examClassWidth < 5 || merged.examClassWidth > 9) {
       merged.examClassWidth = 6;
+    }
+    if (!Array.isArray(merged.unequalExamRows) || merged.unequalExamRows.length === 0) {
+      merged.unequalExamRows = INITIAL_UNEQUAL_EXAM_ROWS;
     }
     return merged;
   } catch (e) {

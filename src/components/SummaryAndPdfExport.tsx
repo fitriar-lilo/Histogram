@@ -1,89 +1,94 @@
 import React, { useState } from 'react';
-import { StudentProgress, DatasetPreset, ExamTableRow } from '../types';
-import { exportStudentReportPDF } from '../utils/pdfExport';
+import { StudentProgress, ExamTableRow, UnequalExamRow } from '../types';
+import { exportSection4PDF, exportSection7PDF } from '../utils/pdfExport';
 import confetti from 'canvas-confetti';
-import { 
-  Download, 
-  CheckCircle2, 
-  GraduationCap, 
-  User, 
-  Sparkles,
-  MessageSquare
+import {
+  Download,
+  CheckCircle2,
+  GraduationCap,
+  User,
+  MessageSquare,
+  FileText,
+  Scale,
+  BarChart3
 } from 'lucide-react';
 
 interface SummaryAndPdfExportProps {
   progress: StudentProgress;
-  dataset: DatasetPreset;
   examRows: ExamTableRow[];
+  unequalRows: UnequalExamRow[];
   onUpdateNotes: (notes: string) => void;
   onUpdateProfile: (name: string, className: string, teacher: string) => void;
 }
 
 export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
   progress,
-  dataset,
   examRows,
+  unequalRows,
   onUpdateNotes,
   onUpdateProfile
 }) => {
-  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportingWhich, setExportingWhich] = useState<'none' | 'sec4' | 'sec7'>('none');
 
-  const handleDownloadPDF = () => {
-    setIsExporting(true);
+  const handleDownloadSection4 = () => {
+    setExportingWhich('sec4');
     try {
-      exportStudentReportPDF(progress, dataset, examRows);
-      confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
+      exportSection4PDF(progress, examRows);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
     } catch (e) {
-      console.error('PDF export failed:', e);
+      console.error('Section 4 PDF export failed:', e);
     } finally {
-      setIsExporting(false);
+      setExportingWhich('none');
+    }
+  };
+
+  const handleDownloadSection7 = () => {
+    setExportingWhich('sec7');
+    try {
+      exportSection7PDF(progress, unequalRows);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
+    } catch (e) {
+      console.error('Section 7 PDF export failed:', e);
+    } finally {
+      setExportingWhich('none');
     }
   };
 
   const studentNameDisplay = progress.profile.name.trim() || 'Student Name (Not specified)';
   const classWidth = progress.examClassWidth || 6;
+  const sec4Verified = progress.examTableVerified && progress.examHistogramVerified;
+  const sec7Verified = progress.unequalTableVerified && progress.unequalHistogramVerified;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
       {/* Banner */}
-      <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white rounded-2xl p-6 sm:p-8 shadow-md">
+      <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 text-white rounded-2xl p-6 sm:p-8 shadow-md">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider text-blue-100">
               <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
-              Final Step • Official Cambridge 0580 Portfolio
+              Section 8 • Separate PDF Reports (Cambridge 0580)
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Congratulations! Your Learning Record is Ready
+              Download Your Section 4 &amp; Section 7 PDF Reports
             </h2>
             <p className="text-blue-100 text-sm sm:text-base max-w-2xl leading-relaxed">
-              You have completed the definitions, converted single raw data into equal class groups, built the histogram,
-              and successfully completed the 30 Students' Heights exam task (class length = {classWidth}).
+              Your Equal-Width Histogram (<strong>Section 4</strong>) and Different-Width &amp; Frequency Density Histogram
+              (<strong>Section 7</strong>) are exported as two separate, clear PDF worksheets ready for your teacher!
             </p>
           </div>
-
-          <button
-            onClick={handleDownloadPDF}
-            disabled={isExporting}
-            className="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold px-6 py-3.5 rounded-xl text-sm sm:text-base shadow-lg transition-all flex items-center gap-2.5 shrink-0 hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            <Download className="w-5 h-5 text-slate-900" />
-            <span>{isExporting ? 'Generating PDF...' : 'Download Portfolio as PDF'}</span>
-          </button>
         </div>
       </div>
 
       {/* Student Details & Reflection Form */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Verification of Profile */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <User className="w-4 h-4 text-indigo-600" />
-            <span>Student & Submission Details</span>
+            <span>Student &amp; Submission Details</span>
           </h3>
           <p className="text-xs text-slate-500">
-            These credentials will be formally stamped on your downloaded PDF worksheet:
+            These details are printed on both your Section 4 and Section 7 PDF reports:
           </p>
 
           <div className="space-y-3 text-xs">
@@ -124,125 +129,163 @@ export const SummaryAndPdfExport: React.FC<SummaryAndPdfExportProps> = ({
 
             <div className="pt-2 text-[11px] text-emerald-700 flex items-center gap-1.5 font-medium">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Saved locally in browser memory. You can resume anytime!</span>
+              <span>Student: <strong>{studentNameDisplay}</strong> • Saved automatically</span>
             </div>
           </div>
         </div>
 
-        {/* Student Reflections */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-indigo-600" />
-            <span>Student Reflection & Key Takeaways</span>
+            <span>Student Reflection &amp; Key Takeaways</span>
           </h3>
           <p className="text-xs text-slate-500">
-            Write down what you learned today (e.g. why histogram bars touch, how class width = {classWidth} is maintained):
+            Write a short note on what you learned (included in both PDF worksheets):
           </p>
 
           <textarea
             rows={5}
             value={progress.studentNotes}
             onChange={(e) => onUpdateNotes(e.target.value)}
-            placeholder={`e.g. Today I learned that a histogram is for continuous numerical data, so bars must touch without gaps. I grouped 30 student heights into equal intervals of width ${classWidth} and accurately drew touching bars matching the frequencies.`}
+            placeholder={`e.g. For equal class widths (w=${classWidth}), bar height matches frequency. For different class widths, I calculate Frequency Density = Frequency ÷ Class Width so the area of each bar equals frequency.`}
             className="w-full p-3 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed"
           />
         </div>
-
       </div>
 
-      {/* Portfolio Preview Card */}
-      <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-md p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
-          <div>
-            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-              Document Preview
-            </span>
-            <h3 className="text-xl font-bold text-slate-900 mt-1">
-              Cambridge IGCSE Mathematics (0580) Student Portfolio
-            </h3>
-            <p className="text-xs text-slate-500">
-              Student: <strong>{studentNameDisplay}</strong> • Topic: Chapter 20 Histogram Construction
-            </p>
+      {/* Two Separate PDF Download Cards: Section 4 & Section 7 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* SECTION 4 PDF CARD */}
+        <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-md p-6 space-y-5 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200">
+              <div>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                  <BarChart3 className="w-3 h-3" />
+                  Section 4 PDF
+                </span>
+                <h3 className="text-lg font-extrabold text-slate-900 mt-1">
+                  Equal Class Width Histogram
+                </h3>
+                <p className="text-xs text-slate-500">
+                  30 Students' Heights • Chosen Class Width: <strong>w = {classWidth}</strong>
+                </p>
+              </div>
+              <span
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                  sec4Verified
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}
+              >
+                {sec4Verified ? 'Verified Complete' : 'In Progress'}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px] border border-slate-200 rounded-lg overflow-hidden">
+                <thead className="bg-slate-100 text-slate-700 font-bold">
+                  <tr>
+                    <th className="py-1.5 px-2">Interval</th>
+                    <th className="py-1.5 px-2">Width</th>
+                    <th className="py-1.5 px-2">Freq</th>
+                    <th className="py-1.5 px-2">Drawn Bar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {examRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="py-1.5 px-2 font-mono">{row.intervalInput || row.intervalText}</td>
+                      <td className="py-1.5 px-2 font-mono">{row.classWidthInput || row.targetWidth}</td>
+                      <td className="py-1.5 px-2 font-mono font-bold text-emerald-700">
+                        {row.frequencyInput || row.targetFreq}
+                      </td>
+                      <td className="py-1.5 px-2 font-mono text-indigo-700">
+                        w={row.userBarWidth || classWidth}, h={row.userBarHeight || 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <button
-            onClick={handleDownloadPDF}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 shrink-0"
+            onClick={handleDownloadSection4}
+            disabled={exportingWhich === 'sec4'}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-5 py-3.5 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Save as PDF</span>
+            <span>{exportingWhich === 'sec4' ? 'Generating Section 4 PDF...' : 'Download Section 4 PDF (Equal Width)'}</span>
           </button>
         </div>
 
-        {/* 4 Summary Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Concept Sort</div>
-            <div className="text-lg font-black text-indigo-700 mt-0.5">8 / 8 Mastered</div>
-          </div>
+        {/* SECTION 7 PDF CARD */}
+        <div className="bg-white rounded-2xl border-2 border-purple-200 shadow-md p-6 space-y-5 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200">
+              <div>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 uppercase tracking-wider bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                  <Scale className="w-3 h-3" />
+                  Section 7 PDF
+                </span>
+                <h3 className="text-lg font-extrabold text-slate-900 mt-1">
+                  Different Widths &amp; Frequency Density
+                </h3>
+                <p className="text-xs text-slate-500">
+                  30 Students' Reading Times • <strong>FD = Frequency ÷ Width</strong>
+                </p>
+              </div>
+              <span
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                  sec7Verified
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}
+              >
+                {sec7Verified ? 'Verified Complete' : 'In Progress'}
+              </span>
+            </div>
 
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Exam Class Length</div>
-            <div className="text-lg font-black text-emerald-700 mt-0.5">w = {classWidth} (Equal)</div>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">30 Heights Grouped</div>
-            <div className="text-lg font-black text-purple-700 mt-0.5">{examRows.length} Touching Bars</div>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Status</div>
-            <div className="text-lg font-black text-amber-600 mt-0.5">Verified Pass</div>
-          </div>
-        </div>
-
-        {/* Exam Table Review */}
-        <div>
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-            Completed Exam Frequency Table (30 Students' Heights, Class Length = {classWidth}):
-          </h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
-              <thead className="bg-slate-100 text-slate-700 font-bold">
-                <tr>
-                  <th className="py-2 px-3">Class Interval</th>
-                  <th className="py-2 px-3">Lower Bound</th>
-                  <th className="py-2 px-3">Upper Bound</th>
-                  <th className="py-2 px-3">Class Width</th>
-                  <th className="py-2 px-3">Frequency</th>
-                  <th className="py-2 px-3">Bar Width</th>
-                  <th className="py-2 px-3">Bar Height</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {examRows.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50">
-                    <td className="py-2 px-3 font-mono font-medium">{row.intervalInput || row.intervalText}</td>
-                    <td className="py-2 px-3 font-mono">{row.lowerBoundInput || row.targetLower}</td>
-                    <td className="py-2 px-3 font-mono">{row.upperBoundInput || row.targetUpper}</td>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">{row.classWidthInput || row.targetWidth}</td>
-                    <td className="py-2 px-3 font-mono font-bold text-emerald-700">{row.frequencyInput || row.targetFreq}</td>
-                    <td className="py-2 px-3 font-mono">{row.userBarWidth || classWidth}</td>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-600">{row.userBarHeight || row.targetFreq}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px] border border-slate-200 rounded-lg overflow-hidden">
+                <thead className="bg-slate-100 text-slate-700 font-bold">
+                  <tr>
+                    <th className="py-1.5 px-2">Interval</th>
+                    <th className="py-1.5 px-2">Width</th>
+                    <th className="py-1.5 px-2">Freq</th>
+                    <th className="py-1.5 px-2">FD</th>
+                    <th className="py-1.5 px-2">Drawn Bar</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {unequalRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="py-1.5 px-2 font-mono">{row.intervalInput || row.intervalText}</td>
+                      <td className="py-1.5 px-2 font-mono">{row.classWidthInput || row.targetWidth}</td>
+                      <td className="py-1.5 px-2 font-mono font-bold text-blue-700">
+                        {row.frequencyInput || row.targetFreq}
+                      </td>
+                      <td className="py-1.5 px-2 font-mono font-bold text-purple-700">
+                        {row.frequencyDensityInput || row.targetDensity}
+                      </td>
+                      <td className="py-1.5 px-2 font-mono text-purple-800">
+                        w={row.userBarWidth}, FD={(row.userBarDensity || 0).toFixed(1)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        {/* Final CTA */}
-        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-indigo-950">
-          <div>
-            <strong>Ready to submit to your teacher?</strong> Click the button to download your official PDF document with graph and assessment rubric.
-          </div>
           <button
-            onClick={handleDownloadPDF}
-            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            onClick={handleDownloadSection7}
+            disabled={exportingWhich === 'sec7'}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-5 py-3.5 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>Download My PDF Report</span>
+            <FileText className="w-4 h-4" />
+            <span>{exportingWhich === 'sec7' ? 'Generating Section 7 PDF...' : 'Download Section 7 PDF (Different Widths)'}</span>
           </button>
         </div>
       </div>

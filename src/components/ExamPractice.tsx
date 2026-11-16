@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExamTableRow } from '../types';
-import { EXAM_HEIGHTS_DATA, EXAM_CLASS_WIDTH_OPTIONS } from '../data/curriculumData';
+import { EXAM_HEIGHTS_DATA, EXAM_CLASS_WIDTH_OPTIONS, buildExamTableRows, getExamStartBound } from '../data/curriculumData';
 import confetti from 'canvas-confetti';
 import { 
   Award, 
@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Wand2,
   Lightbulb,
-  Sliders
+  Sliders,
+  Download
 } from 'lucide-react';
 
 interface ExamPracticeProps {
@@ -25,6 +26,7 @@ interface ExamPracticeProps {
   isTableVerified: boolean;
   onHistogramVerified: () => void;
   isHistogramVerified: boolean;
+  onDownloadPdf: () => void;
   onGoToExport: () => void;
 }
 
@@ -37,6 +39,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
   isTableVerified,
   onHistogramVerified,
   isHistogramVerified,
+  onDownloadPdf,
   onGoToExport
 }) => {
   const [markedNumbers, setMarkedNumbers] = useState<Record<number, boolean>>({});
@@ -67,7 +70,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
   const safeActiveBarIdx = Math.min(activeBarIdx, Math.max(0, tableRows.length - 1));
 
-  // Switch class width (5 to 9)
+  // Switch class width (5 to 9) or starting bound
   const handleSelectWidth = (width: number) => {
     if (width === selectedClassWidth) return;
     onChangeClassWidth(width);
@@ -84,6 +87,61 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     });
     setActiveBarIdx(0);
     setLastActiveRowId('row-1');
+  };
+
+  const currentStartBound = tableRows[0]?.targetLower ?? getExamStartBound(selectedClassWidth);
+
+  const handleChangeStartBound = (newStart: number) => {
+    const minData = Math.min(...EXAM_HEIGHTS_DATA); // 145
+    const clampedStart = Math.max(138, Math.min(minData, newStart));
+    const rebuilt = buildExamTableRows(selectedClassWidth, clampedStart);
+    onUpdateTableRows(rebuilt);
+    setTableFeedback({
+      checked: false,
+      allCorrect: false,
+      rowStatus: {},
+      summaryMsg: ''
+    });
+    setHistogramFeedback({
+      checked: false,
+      allCorrect: false,
+      errors: []
+    });
+    setActiveBarIdx(0);
+    setLastActiveRowId('row-1');
+  };
+
+  const handleAddRow = () => {
+    if (tableRows.length >= 9) return;
+    const last = tableRows[tableRows.length - 1];
+    const nextLower = last ? last.targetUpper : currentStartBound;
+    const nextUpper = nextLower + selectedClassWidth;
+    const newRow: ExamTableRow = {
+      id: `row-${Date.now()}`,
+      intervalInput: '',
+      intervalText: `${nextLower} ≤ h ≤ ${nextUpper}`,
+      lowerBoundInput: '',
+      upperBoundInput: '',
+      classWidthInput: '',
+      frequencyInput: '',
+      userBarHeight: 0,
+      userBarWidth: selectedClassWidth,
+      targetLower: nextLower,
+      targetUpper: nextUpper,
+      targetWidth: selectedClassWidth,
+      targetFreq: 0
+    };
+    onUpdateTableRows([...tableRows, newRow]);
+    setTableFeedback((prev) => ({ ...prev, checked: false }));
+    setHistogramFeedback((prev) => ({ ...prev, checked: false }));
+  };
+
+  const handleRemoveLastRow = () => {
+    if (tableRows.length <= 4) return;
+    onUpdateTableRows(tableRows.slice(0, -1));
+    setActiveBarIdx((prev) => Math.min(prev, tableRows.length - 2));
+    setTableFeedback((prev) => ({ ...prev, checked: false }));
+    setHistogramFeedback((prev) => ({ ...prev, checked: false }));
   };
 
   // Toggle crossing off a raw number
@@ -210,6 +268,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     let allOk = true;
     const statusMap: Record<string, { intervalOk: boolean; lowerOk: boolean; upperOk: boolean; widthOk: boolean; freqOk: boolean }> = {};
     let totalEnteredFreq = 0;
+    let overlapOrGapError = '';
 
     tableRows.forEach((row, idx) => {
       const target = effectiveBounds[idx];
@@ -217,6 +276,17 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
       const upper = parseFloat(row.upperBoundInput);
       const width = parseFloat(row.classWidthInput);
       const freq = parseFloat(row.frequencyInput);
+
+      if (idx > 0 && !isNaN(lower)) {
+        const prevUpper = parseFloat(tableRows[idx - 1].upperBoundInput);
+        if (!isNaN(prevUpper)) {
+          if (lower < prevUpper) {
+            overlapOrGapError = `Row ${idx + 1} Lower Bound (${lower}) overlaps Row ${idx} Upper Bound (${prevUpper}). Intervals must not overlap!`;
+          } else if (lower > prevUpper) {
+            overlapOrGapError = `There is a gap between Row ${idx} Upper Bound (${prevUpper}) and Row ${idx + 1} Lower Bound (${lower}). Adjacent bounds must touch!`;
+          }
+        }
+      }
 
       const intervalOk = checkIntervalString(row.intervalInput, target.lower, target.upper);
       const lowerOk = lower === target.lower;
@@ -234,15 +304,18 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
     });
 
     let summaryMsg = '';
-    if (allOk) {
+    if (allOk && !overlapOrGapError) {
       summaryMsg = `Outstanding! Every class interval, boundary, class width (${selectedClassWidth}), and frequency count is correct!`;
       onTableVerified();
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 } });
+    } else if (overlapOrGapError) {
+      summaryMsg = overlapOrGapError;
+      allOk = false;
     } else {
       if (totalEnteredFreq !== 30) {
         summaryMsg = `Your total frequency adds up to ${totalEnteredFreq}, but there are 30 students in total. Double check your counts!`;
       } else {
-        summaryMsg = `Check highlighted red cells below. Ensure class intervals and boundaries span width ${selectedClassWidth} (Upper − Lower = ${selectedClassWidth}).`;
+        summaryMsg = `Check highlighted red cells below. Ensure class intervals and boundaries span width ${selectedClassWidth} (Upper − Lower = ${selectedClassWidth}) without overlapping.`;
       }
     }
 
@@ -324,23 +397,34 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
 
   // Graph Dimensions
   const svgWidth = 720;
-  const svgHeight = 360;
+  const svgHeight = 365;
   const marginLeft = 60;
   const marginRight = 30;
   const marginTop = 30;
-  const marginBottom = 60;
+  const marginBottom = 65;
   const plotWidth = svgWidth - marginLeft - marginRight;
   const plotHeight = svgHeight - marginTop - marginBottom;
 
   const minX = effectiveBounds[0]?.lower ?? 144;
-  const maxX = effectiveBounds[effectiveBounds.length - 1]?.upper ?? 180;
-  const totalSpan = Math.max(1, maxX - minX);
+  const maxBoundX = effectiveBounds[effectiveBounds.length - 1]?.upper ?? 180;
+
+  // Compute sequential non-overlapping bar geometries so bars NEVER overlap or coincide
+  let cursorX = minX;
+  const barGeometries = tableRows.map((row) => {
+    const w = Math.max(1, row.userBarWidth || selectedClassWidth);
+    const start = cursorX;
+    const end = start + w;
+    cursorX = end;
+    return { start, end, w };
+  });
+  const drawnMaxX = cursorX;
+  const totalSpan = Math.max(1, drawnMaxX - minX, maxBoundX - minX);
 
   const yTicks = Array.from({ length: Math.floor(maxY / 2) + 1 }, (_, i) => i * 2);
   const countedCount = Object.values(markedNumbers).filter(Boolean).length;
 
   const barCardsGridClass =
-    tableRows.length === 4
+    tableRows.length <= 4
       ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
       : tableRows.length === 5
       ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5'
@@ -377,35 +461,63 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
         </div>
       </div>
 
-      {/* Class Width Picker (5 to 9) */}
-      <div className="bg-white p-5 rounded-2xl border-2 border-indigo-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-indigo-600" />
-            <span>Step A: Choose Your Equal Class Width (5 to 9)</span>
-          </h3>
-          <p className="text-xs text-slate-500">
-            Select any class width from <strong>5 to 9</strong>. Your frequency table rows and histogram graph axis will adapt automatically.
-          </p>
+      {/* Class Width Picker (5 to 9) & Starting Bound Arranger */}
+      <div className="bg-white p-5 rounded-2xl border-2 border-indigo-200 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-indigo-600" />
+              <span>Step A: Arrange Your Equal Class Width (5 to 9) &amp; Starting Bound</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Select your class width (<strong>5 to 9</strong>) and starting lower bound. Your table groups and histogram scale adapt automatically with zero overlapping bars.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {EXAM_CLASS_WIDTH_OPTIONS.map((w) => {
+              const isSelected = selectedClassWidth === w;
+              return (
+                <button
+                  key={w}
+                  onClick={() => handleSelectWidth(w)}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105'
+                      : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-300 hover:border-indigo-300'
+                  }`}
+                >
+                  w = {w}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {EXAM_CLASS_WIDTH_OPTIONS.map((w) => {
-            const isSelected = selectedClassWidth === w;
-            return (
-              <button
-                key={w}
-                onClick={() => handleSelectWidth(w)}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105'
-                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-300 hover:border-indigo-300'
-                }`}
-              >
-                w = {w}
-              </button>
-            );
-          })}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-700">Starting Lower Bound:</span>
+            <button
+              type="button"
+              onClick={() => handleChangeStartBound(currentStartBound - 1)}
+              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-slate-700 cursor-pointer"
+            >
+              -1
+            </button>
+            <span className="font-mono font-bold text-indigo-800 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
+              {currentStartBound} cm
+            </span>
+            <button
+              type="button"
+              onClick={() => handleChangeStartBound(currentStartBound + 1)}
+              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-slate-700 cursor-pointer"
+            >
+              +1
+            </button>
+          </div>
+          <div className="text-slate-600">
+            Arranged span: <strong className="font-mono text-indigo-900">{currentStartBound} to {tableRows[tableRows.length - 1]?.targetUpper} cm</strong> ({tableRows.length} non-overlapping groups)
+          </div>
         </div>
       </div>
 
@@ -669,8 +781,28 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
             </tbody>
             <tfoot className="bg-slate-100 font-bold border-t border-slate-200">
               <tr>
-                <td colSpan={4} className="py-2.5 px-3 text-right text-xs text-slate-700">
-                  Total Frequency (Σf) must equal 30:
+                <td colSpan={3} className="py-2.5 px-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddRow}
+                      disabled={tableRows.length >= 9}
+                      className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 cursor-pointer"
+                    >
+                      + Add Row
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveLastRow}
+                      disabled={tableRows.length <= 4}
+                      className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 cursor-pointer"
+                    >
+                      − Remove Row
+                    </button>
+                  </div>
+                </td>
+                <td className="py-2.5 px-3 text-right text-xs text-slate-700">
+                  Total (Σf):
                 </td>
                 <td colSpan={2} className="py-2.5 px-3 font-mono text-sm text-indigo-900">
                   {tableRows.reduce((sum, r) => sum + (parseFloat(r.frequencyInput) || 0), 0)} / 30
@@ -788,115 +920,148 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
               Frequency (f)
             </text>
 
-            {/* STUDENT DRAWN HISTOGRAM BARS */}
-            {tableRows.map((row, idx) => {
-              const bounds = effectiveBounds[idx];
-              const leftNorm = (bounds.lower - minX) / totalSpan;
-              const userWidth = row.userBarWidth || selectedClassWidth;
-              const widthNorm = userWidth / totalSpan;
+            {/* STUDENT DRAWN HISTOGRAM BARS (Sequential Non-Overlapping Layout) */}
+            {(() => {
+              let lastLabelX = -Infinity;
+              return tableRows.map((row, idx) => {
+                const bounds = effectiveBounds[idx];
+                const geom = barGeometries[idx];
+                const leftNorm = (geom.start - minX) / totalSpan;
+                const widthNorm = geom.w / totalSpan;
 
-              const barX = marginLeft + leftNorm * plotWidth;
-              const barW = widthNorm * plotWidth;
+                const barX = marginLeft + leftNorm * plotWidth;
+                const barW = widthNorm * plotWidth;
 
-              const userH = row.userBarHeight || 0;
-              const barHeightPx = (userH / maxY) * plotHeight;
-              const barY = marginTop + plotHeight - barHeightPx;
+                const userH = row.userBarHeight || 0;
+                const barHeightPx = (userH / maxY) * plotHeight;
+                const barY = marginTop + plotHeight - barHeightPx;
 
-              const isSelected = safeActiveBarIdx === idx;
-              const isCorrectHeight = row.userBarHeight === bounds.expectedFreq;
-              const isCorrectWidth = row.userBarWidth === selectedClassWidth;
+                const isSelected = safeActiveBarIdx === idx;
+                const isCorrectHeight = row.userBarHeight === bounds.expectedFreq;
+                const isCorrectWidth = row.userBarWidth === selectedClassWidth;
 
-              return (
-                <g key={row.id} className="cursor-pointer" onClick={() => setActiveBarIdx(idx)}>
-                  {/* The bar */}
-                  <rect
-                    x={barX}
-                    y={barY}
-                    width={barW}
-                    height={barHeightPx}
-                    fill={isSelected ? '#4338ca' : isCorrectHeight && isCorrectWidth ? '#4f46e5' : '#6366f1'}
-                    stroke="#1e1b4b"
-                    strokeWidth="1.5"
-                    className="hover:brightness-110 transition-all"
-                  />
+                const staggerStartTick = barX - lastLabelX < 24;
+                lastLabelX = barX;
 
-                  {/* Top drag handle indicator */}
-                  <rect
-                    x={barX}
-                    y={barY - 3}
-                    width={barW}
-                    height={6}
-                    fill="#fbbf24"
-                    stroke="#b45309"
-                    strokeWidth="1"
-                    rx="2"
-                  >
-                    <title>{`Bar ${idx + 1}: Click to select & adjust`}</title>
-                  </rect>
+                const endX = barX + barW;
+                const staggerEndTick = endX - lastLabelX < 24;
 
-                  {/* Label inside bar */}
-                  {barHeightPx > 20 && (
-                    <text
-                      x={barX + barW / 2}
-                      y={barY + barHeightPx / 2 + 4}
-                      textAnchor="middle"
-                      fill="#ffffff"
-                      fontFamily="JetBrains Mono"
-                      fontWeight="bold"
-                      fontSize="11"
+                return (
+                  <g key={row.id} className="cursor-pointer" onClick={() => setActiveBarIdx(idx)}>
+                    {/* The bar */}
+                    <rect
+                      x={barX}
+                      y={barY}
+                      width={barW}
+                      height={barHeightPx}
+                      fill={isSelected ? '#4338ca' : isCorrectHeight && isCorrectWidth ? '#4f46e5' : '#6366f1'}
+                      stroke="#1e1b4b"
+                      strokeWidth="1.5"
+                      className="hover:brightness-110 transition-all"
+                    />
+
+                    {/* Top drag handle indicator */}
+                    <rect
+                      x={barX}
+                      y={barY - 3}
+                      width={barW}
+                      height={6}
+                      fill="#fbbf24"
+                      stroke="#b45309"
+                      strokeWidth="1"
+                      rx="2"
                     >
-                      f = {userH}
-                    </text>
-                  )}
+                      <title>{`Bar ${idx + 1}: Width=${geom.w}, Frequency=${userH}`}</title>
+                    </rect>
 
-                  {/* X Axis Tick at Boundary */}
-                  <line
-                    x1={barX}
-                    y1={marginTop + plotHeight}
-                    x2={barX}
-                    y2={marginTop + plotHeight + 6}
-                    stroke="#0f172a"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={barX}
-                    y={marginTop + plotHeight + 20}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fontFamily="JetBrains Mono"
-                    fontWeight="bold"
-                    fill="#1e293b"
-                  >
-                    {bounds.lower}
-                  </text>
-
-                  {/* Last boundary */}
-                  {idx === tableRows.length - 1 && (
-                    <>
-                      <line
-                        x1={barX + barW}
-                        y1={marginTop + plotHeight}
-                        x2={barX + barW}
-                        y2={marginTop + plotHeight + 6}
-                        stroke="#0f172a"
-                        strokeWidth="1.5"
-                      />
+                    {/* Collision-free bar label */}
+                    {barHeightPx >= 24 && barW >= 36 ? (
                       <text
-                        x={barX + barW}
-                        y={marginTop + plotHeight + 20}
+                        x={barX + barW / 2}
+                        y={barY + barHeightPx / 2 + 4}
                         textAnchor="middle"
-                        fontSize="11"
+                        fill="#ffffff"
                         fontFamily="JetBrains Mono"
                         fontWeight="bold"
-                        fill="#1e293b"
+                        fontSize="11"
                       >
-                        {bounds.upper}
+                        f = {userH}
                       </text>
-                    </>
-                  )}
-                </g>
-              );
-            })}
+                    ) : barHeightPx >= 18 && barW >= 18 ? (
+                      <text
+                        x={barX + barW / 2}
+                        y={barY + barHeightPx / 2 + 4}
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontFamily="JetBrains Mono"
+                        fontWeight="bold"
+                        fontSize="10"
+                      >
+                        {userH}
+                      </text>
+                    ) : userH > 0 ? (
+                      <text
+                        x={barX + barW / 2}
+                        y={Math.max(marginTop + 10, barY - 8)}
+                        textAnchor="middle"
+                        fill="#312e81"
+                        fontFamily="JetBrains Mono"
+                        fontWeight="bold"
+                        fontSize="10"
+                      >
+                        {userH}
+                      </text>
+                    ) : null}
+
+                    {/* X Axis Tick at Boundary */}
+                    <line
+                      x1={barX}
+                      y1={marginTop + plotHeight}
+                      x2={barX}
+                      y2={marginTop + plotHeight + 6}
+                      stroke="#0f172a"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x={barX}
+                      y={marginTop + plotHeight + (staggerStartTick ? 31 : 20)}
+                      textAnchor="middle"
+                      fontSize="11"
+                      fontFamily="JetBrains Mono"
+                      fontWeight="bold"
+                      fill="#1e293b"
+                    >
+                      {Number(geom.start.toFixed(1))}
+                    </text>
+
+                    {/* Last boundary */}
+                    {idx === tableRows.length - 1 && (
+                      <>
+                        <line
+                          x1={endX}
+                          y1={marginTop + plotHeight}
+                          x2={endX}
+                          y2={marginTop + plotHeight + 6}
+                          stroke="#0f172a"
+                          strokeWidth="1.5"
+                        />
+                        <text
+                          x={endX}
+                          y={marginTop + plotHeight + (staggerEndTick ? 31 : 20)}
+                          textAnchor="middle"
+                          fontSize="11"
+                          fontFamily="JetBrains Mono"
+                          fontWeight="bold"
+                          fill="#1e293b"
+                        >
+                          {Number(geom.end.toFixed(1))}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                );
+              });
+            })()}
 
             {/* X Axis Baseline */}
             <line
@@ -911,7 +1076,7 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
             {/* X Axis Label */}
             <text
               x={marginLeft + plotWidth / 2}
-              y={marginTop + plotHeight + 46}
+              y={marginTop + plotHeight + 50}
               textAnchor="middle"
               fontSize="13"
               fontWeight="bold"
@@ -1056,19 +1221,37 @@ export const ExamPractice: React.FC<ExamPracticeProps> = ({
           </div>
         )}
 
-        {/* Next Step Action */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
+        {/* Next Step & Section 4 PDF Download */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
           <div className="text-xs text-slate-600">
-            <strong>Exam Practice Complete!</strong> You grouped single continuous data into equal class lengths of {selectedClassWidth} and constructed the touching histogram.
+            {isTableVerified && isHistogramVerified ? (
+              <span>
+                <strong>Section 4 Complete!</strong> Download your Section 4 PDF or continue to Section 5 to learn about different class widths.
+              </span>
+            ) : (
+              <span>
+                Check your table and histogram above, or download your Section 4 worksheet anytime and continue to Section 5.
+              </span>
+            )}
           </div>
 
-          <button
-            onClick={onGoToExport}
-            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>Proceed to Step 5: Download PDF Report</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+            <button
+              onClick={onDownloadPdf}
+              className="w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold px-5 py-3 rounded-xl text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Section 4 PDF</span>
+            </button>
+
+            <button
+              onClick={onGoToExport}
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Proceed to Section 5: Different Class Widths</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

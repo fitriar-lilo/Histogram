@@ -1,4 +1,12 @@
-export type ModuleTab = 'concept' | 'grouping' | 'histogram' | 'practice' | 'export';
+export type ModuleTab =
+  | 'concept'
+  | 'grouping'
+  | 'histogram'
+  | 'practice'
+  | 'unequal-concept'
+  | 'unequal-sample'
+  | 'unequal-practice'
+  | 'export';
 
 export interface StudentProfile {
   name: string;
@@ -33,6 +41,25 @@ export interface ExamTableRow {
   targetUpper: number;
   targetWidth: number;
   targetFreq: number;
+}
+
+export interface UnequalExamRow {
+  id: string;
+  intervalInput: string;
+  intervalText: string;
+  lowerBoundInput: string;
+  upperBoundInput: string;
+  classWidthInput: string;
+  frequencyInput: string;
+  frequencyDensityInput: string;
+  userBarWidth: number;
+  userBarDensity: number;
+  // Target values for scaffolding & verification
+  targetLower: number;
+  targetUpper: number;
+  targetWidth: number;
+  targetFreq: number;
+  targetDensity: number;
 }
 
 export interface DatasetPreset {
@@ -70,6 +97,12 @@ export interface StudentProgress {
   examClassWidth: number;
   examTableVerified: boolean;
   examHistogramVerified: boolean;
+  unequalConceptCompleted: boolean;
+  unequalConceptScore: number;
+  unequalSampleCompleted: boolean;
+  unequalExamRows: UnequalExamRow[];
+  unequalTableVerified: boolean;
+  unequalHistogramVerified: boolean;
   customIntervals: GroupedInterval[];
   studentNotes: string;
 }
